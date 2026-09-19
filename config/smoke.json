@@ -1,0 +1,61 @@
+{
+  "runtime": {
+    "budgets": {
+      "max_plans": 4,
+      "max_steps_per_plan": 8,
+      "max_requests_per_plan": 24,
+      "max_concurrency": 2,
+      "max_payload_bytes": 32768,
+      "max_response_bytes": 65536,
+      "step_timeout_seconds": 5.0,
+      "plan_timeout_seconds": 45.0,
+      "campaign_timeout_seconds": 180.0,
+      "confirmation_runs": 3
+    },
+    "safety": {
+      "allowed_tools": [
+        "http_request",
+        "mcp_call",
+        "tcp_probe",
+        "upstream_counter"
+      ],
+      "allowed_http_methods": ["GET", "HEAD", "OPTIONS", "POST"],
+      "allowed_targets": [
+        "http://127.0.0.1:7475",
+        "127.0.0.1:7474",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:8787",
+        "http://127.0.0.1:4318",
+        "http://127.0.0.1:19000"
+      ],
+      "allow_https": true,
+      "destructive_token_env": "HERACLITUS_ATTACK_DESTRUCTIVE_TOKEN",
+      "require_snapshot_for_destructive": true
+    },
+    "user_agent": "Agent-Atack-Heraclitus/2.0-smoke"
+  },
+  "targets": {
+    "core_rest": "http://127.0.0.1:7475",
+    "core_grpc": "127.0.0.1:7474",
+    "agent_api": "http://127.0.0.1:8080",
+    "mcp_gateway": "http://127.0.0.1:8787",
+    "otlp": "http://127.0.0.1:4318",
+    "upstream": "http://127.0.0.1:19000"
+  },
+  "provider": {
+    "kind": "mock",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "model": "deterministic-safe-planner",
+    "api_key_env": "HERACLITUS_LLM_API_KEY",
+    "timeout_seconds": 30.0
+  },
+  "campaign": {
+    "profile": "smoke",
+    "interval_seconds": 300.0,
+    "plans_per_cycle": 4,
+    "max_cycles": null,
+    "agentic": true,
+    "persist_evidence": true,
+    "report_dir": "reports"
+  }
+}

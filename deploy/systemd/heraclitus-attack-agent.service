@@ -1,0 +1,51 @@
+[Unit]
+Description=HeraclitusDB authorized loopback red-team smoke agent
+Documentation=https://github.com/JoseRFJuniorLLMs/Agent-Atack-Heraclitus-2.0
+After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/d/DEV/Agent-Atack-Heraclitus-2.0
+ExecStart=/mnt/d/DEV/Agent-Atack-Heraclitus-2.0/.venv/bin/heraclitus-attack daemon --config /mnt/d/DEV/Agent-Atack-Heraclitus-2.0/config/smoke.json
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=30
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+Environment=NO_COLOR=1
+Environment=HERACLITUS_LOG_FORMAT=journal
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=heraclitus-attack-agent
+
+# Defesa em profundidade. Esta unit de usuário não substitui um sandbox.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+UMask=0077
+
+[Install]
+WantedBy=default.target
+
