@@ -5,11 +5,16 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 from heraclitus_attack.providers import (
+    AnthropicProvider,
     CompletionRequest,
+    GeminiProvider,
     MockProvider,
     OpenAICompatibleProvider,
+    OpenAIResponsesProvider,
+    ProviderRoute,
     ProviderError,
     ProviderResponseError,
+    RoutingProvider,
     parse_strict_json_object,
     validate_json_schema,
     validated_object,
@@ -225,3 +230,126 @@ def test_openai_provider_caps_response_bytes():
     with pytest.raises(ProviderResponseError, match="byte limit"):
         provider.complete_json(request())
 
+
+class CapturingJsonClient:
+    def __init__(self, response):
+        self.response = response
+        self.seen = None
+
+    def post(self, payload, headers):
+        self.seen = (payload, headers)
+        return self.response
+
+
+def test_openai_responses_provider_extracts_structured_output():
+    content = json.dumps({"name": "codex", "steps": [1]})
+    provider = OpenAIResponsesProvider(
+        base_url="https://api.openai.com/v1",
+        model="gpt-codex-test",
+        api_key="key",
+    )
+    provider.client = CapturingJsonClient(
+        {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": content}],
+                }
+            ]
+        }
+    )
+    assert provider.complete_json(request())["name"] == "codex"
+    payload, headers = provider.client.seen
+    assert payload["text"]["format"]["type"] == "json_schema"
+    assert payload["store"] is False
+    assert headers["Authorization"] == "Bearer key"
+
+
+def test_anthropic_provider_uses_output_config_and_handles_refusal():
+    provider = AnthropicProvider(
+        base_url="https://api.anthropic.com",
+        model="claude-test",
+        api_key="key",
+    )
+    provider.client = CapturingJsonClient(
+        {
+            "stop_reason": "end_turn",
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps({"name": "claude", "steps": [1]}),
+                }
+            ],
+        }
+    )
+    assert provider.complete_json(request())["name"] == "claude"
+    payload, headers = provider.client.seen
+    assert payload["output_config"]["format"]["type"] == "json_schema"
+    assert headers["anthropic-version"] == "2023-06-01"
+    provider.client = CapturingJsonClient({"stop_reason": "refusal", "content": []})
+    with pytest.raises(ProviderResponseError, match="refusal"):
+        provider.complete_json(request())
+
+
+def test_gemini_provider_uses_json_schema_and_validates_model_name():
+    provider = GeminiProvider(
+        base_url="https://generativelanguage.googleapis.com/v1beta",
+        model="gemini-test",
+        api_key="key",
+    )
+    provider.client = CapturingJsonClient(
+        {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": json.dumps(
+                                    {"name": "gemini", "steps": [1]}
+                                )
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    )
+    assert provider.complete_json(request())["name"] == "gemini"
+    payload, headers = provider.client.seen
+    assert payload["generationConfig"]["responseJsonSchema"] == SCHEMA
+    assert headers["x-goog-api-key"] == "key"
+    with pytest.raises(ValueError, match="model name"):
+        GeminiProvider(
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            model="../bad",
+            api_key="key",
+        )
+
+
+def test_routing_provider_honours_roles_then_round_robins():
+    codex = MockProvider(
+        [
+            {"name": "codex", "steps": [1]},
+            {"name": "codex", "steps": [1]},
+        ]
+    )
+    claude = MockProvider(
+        [
+            {"name": "claude", "steps": [1]},
+            {"name": "again", "steps": [1]},
+        ]
+    )
+    routed = RoutingProvider(
+        [
+            ProviderRoute("codex", codex, frozenset({"recon"})),
+            ProviderRoute("claude", claude, frozenset({"critic"})),
+        ]
+    )
+    recon = request(metadata={"role": "recon"})
+    assert routed.complete_json(recon)["name"] == "codex"
+    assert routed.last_route == "codex"
+    critic = request(metadata={"role": "critic"})
+    assert routed.complete_json(critic)["name"] == "claude"
+    assert routed.last_route == "claude"
+    # With no explicit route, the global counter continues deterministically.
+    assert routed.complete_json(request(metadata={"role": "arena-operator"}))["name"] == "codex"

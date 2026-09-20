@@ -3,6 +3,7 @@ import json
 import pytest
 
 from heraclitus_attack.config import BudgetConfig, RuntimeConfig, SafetyConfig
+from heraclitus_attack.settings import LabSettings
 
 
 @pytest.mark.parametrize(
@@ -75,13 +76,22 @@ def test_destructive_token_is_read_lazily(monkeypatch):
     assert config.expected_destructive_token() == "secret"
 
 
-@pytest.mark.parametrize("name", ["smoke.json", "disposable-nightly.json"])
-def test_repository_examples_match_runtime_schema(name):
+@pytest.mark.parametrize(
+    "name",
+    [
+        "smoke.json",
+        "disposable-nightly.json",
+        "arena.json",
+        "arena-multi-provider.example.json",
+        "remote-lab.example.json",
+    ],
+)
+def test_repository_examples_match_application_schema(name):
     # Resolve from the checkout, not the current process directory used by CI.
     path = __file__.replace("tests\\test_config.py", f"config\\{name}")
     if path == __file__:
         from pathlib import Path
 
         path = str(Path(__file__).parents[1] / "config" / name)
-    RuntimeConfig.load(path)
-
+    settings = LabSettings.load(path)
+    assert settings.runtime.safety.allowed_targets

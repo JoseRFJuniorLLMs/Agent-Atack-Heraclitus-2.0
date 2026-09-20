@@ -1,0 +1,85 @@
+{
+  "runtime": {
+    "budgets": {
+      "max_plans": 32,
+      "max_steps_per_plan": 32,
+      "max_requests_per_plan": 256,
+      "max_concurrency": 8,
+      "max_payload_bytes": 262144,
+      "max_response_bytes": 524288,
+      "step_timeout_seconds": 25.0,
+      "plan_timeout_seconds": 600.0,
+      "campaign_timeout_seconds": 1800.0,
+      "confirmation_runs": 3
+    },
+    "safety": {
+      "allowed_tools": ["http_request", "mcp_call", "tcp_probe", "upstream_counter"],
+      "allowed_http_methods": ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"],
+      "allowed_targets": [
+        "http://127.0.0.1:17475",
+        "127.0.0.1:17474",
+        "http://127.0.0.1:18080",
+        "http://127.0.0.1:18787",
+        "http://127.0.0.1:14318",
+        "http://127.0.0.1:19000"
+      ],
+      "allow_https": true,
+      "destructive_token_env": "HERACLITUS_ATTACK_DESTRUCTIVE_TOKEN",
+      "require_snapshot_for_destructive": true
+    },
+    "user_agent": "Agent-Atack-Heraclitus/2.0-arena-multi-provider"
+  },
+  "targets": {
+    "core_rest": "http://127.0.0.1:17475",
+    "core_grpc": "127.0.0.1:17474",
+    "agent_api": "http://127.0.0.1:18080",
+    "mcp_gateway": "http://127.0.0.1:18787",
+    "otlp": "http://127.0.0.1:14318",
+    "upstream": "http://127.0.0.1:19000"
+  },
+  "provider": {
+    "kind": "mock",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "model": "unused-when-providers-roster-is-present",
+    "api_key_env": "HERACLITUS_LLM_API_KEY",
+    "timeout_seconds": 60.0
+  },
+  "providers": [
+    {
+      "name": "codex",
+      "kind": "openai-responses",
+      "base_url": "https://api.openai.com/v1",
+      "model": "gpt-5.2-codex",
+      "api_key_env": "OPENAI_API_KEY",
+      "timeout_seconds": 60.0,
+      "roles": ["recon", "minimizer"]
+    },
+    {
+      "name": "claude",
+      "kind": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "model": "replace-with-your-claude-model",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "timeout_seconds": 60.0,
+      "roles": ["planner", "critic"]
+    },
+    {
+      "name": "gemini",
+      "kind": "gemini",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta",
+      "model": "gemini-2.5-flash",
+      "api_key_env": "GEMINI_API_KEY",
+      "timeout_seconds": 60.0,
+      "roles": ["mutator"]
+    }
+  ],
+  "campaign": {
+    "profile": "destructive",
+    "interval_seconds": 86400.0,
+    "plans_per_cycle": 24,
+    "max_cycles": 1,
+    "agentic": true,
+    "persist_evidence": false,
+    "report_dir": "reports/arena"
+  }
+}

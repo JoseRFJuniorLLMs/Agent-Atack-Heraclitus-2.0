@@ -26,6 +26,18 @@ def test_attack_output_is_unambiguous(verdict, phrase):
     assert "evidence-id=7" in rendered
 
 
+def test_diagnostic_pass_does_not_claim_that_an_attack_was_blocked():
+    output = io.StringIO()
+
+    BootConsole(output, color=False).attack(
+        "gRPC reachability", Verdict.PASS, diagnostic=True
+    )
+
+    rendered = output.getvalue()
+    assert "diagnóstico concluído" in rendered
+    assert "ataque NÃO funcionou" not in rendered
+
+
 def test_color_can_be_forced_but_no_color_wins(monkeypatch):
     monkeypatch.setenv("FORCE_COLOR", "1")
     monkeypatch.delenv("NO_COLOR", raising=False)
@@ -62,4 +74,3 @@ def test_summary_uses_vulnerable_or_error_status():
     output = io.StringIO()
     BootConsole(output, color=False).summary({"ERROR": 1}, 2)
     assert "ERRO" in output.getvalue()
-

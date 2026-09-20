@@ -9,6 +9,7 @@ from typing import Any, Mapping, Sequence
 
 from ..models import AttackPlan, Observation, RiskLevel
 from ..providers import CompletionRequest, LLMProvider, ProviderResponseError
+from ..safety import SafetyViolation, canonical_target, effective_step_requires_authorization
 
 
 DEFAULT_TOOLS = ("http_request", "mcp_call", "tcp_probe", "upstream_counter")
@@ -17,6 +18,7 @@ DEFAULT_ORACLES = (
     "evidence_receipt",
     "http_status",
     "no_sensitive_leak",
+    "reachability",
     "upstream_zero",
 )
 
@@ -103,6 +105,34 @@ class AgentContext:
                 for name in names
                 if hasattr(value, name)
             }
+        # Coordinator.PlanningContext intentionally has a smaller, generic
+        # protocol.  Adapt its trusted target aliases without weakening the
+        # exact allowlist used by agent roles.
+        target_hints = (
+            value.get("target_hints")
+            if isinstance(value, Mapping)
+            else getattr(value, "target_hints", None)
+        )
+        if "target" not in raw and isinstance(target_hints, Mapping) and target_hints:
+            targets = tuple(str(item) for item in target_hints.values())
+            raw["target"] = targets[0]
+            raw.setdefault("allowed_targets", targets)
+        if "max_steps" not in raw:
+            maximum = (
+                value.get("max_steps_per_plan")
+                if isinstance(value, Mapping)
+                else getattr(value, "max_steps_per_plan", None)
+            )
+            if maximum is not None:
+                raw["max_steps"] = int(maximum)
+        if "objective" not in raw:
+            goals = (
+                value.get("goals")
+                if isinstance(value, Mapping)
+                else getattr(value, "goals", None)
+            )
+            if goals:
+                raw["objective"] = "; ".join(str(item) for item in goals)
         for name in (
             "allowed_tools",
             "allowed_targets",
@@ -276,7 +306,16 @@ def _walk_arguments(value: Any, context: AgentContext, path: str = "arguments") 
             if key in _FORBIDDEN_EXECUTION_KEYS:
                 raise AgentPlanError(f"{path}.{key}: executable/shell field is forbidden")
             if key in _DESTINATION_KEYS and isinstance(child, str):
-                if child not in context.allowed_targets and not child.startswith("/"):
+                try:
+                    allowed = {
+                        canonical_target(target) for target in context.allowed_targets
+                    }
+                    destination_allowed = (
+                        child.startswith("/") or canonical_target(child) in allowed
+                    )
+                except (SafetyViolation, ValueError):
+                    destination_allowed = False
+                if not destination_allowed:
                     raise AgentPlanError(f"{path}.{key}: destination is not allowlisted")
             _walk_arguments(child, context, f"{path}.{key}")
     elif isinstance(value, list):
@@ -302,8 +341,13 @@ def validate_agent_plan(plan: AttackPlan, context: AgentContext) -> None:
             raise AgentPlanError("plan selected a non-allowlisted target")
         if step.timeout_seconds and step.timeout_seconds > context.max_step_timeout_seconds:
             raise AgentPlanError("plan step exceeds the timeout budget")
-        if step.destructive and context.max_risk is not RiskLevel.DESTRUCTIVE:
-            raise AgentPlanError("destructive step is outside this campaign")
+        if (
+            effective_step_requires_authorization(step)
+            and context.max_risk is not RiskLevel.DESTRUCTIVE
+        ):
+            raise AgentPlanError(
+                "step semantics require destructive authorization outside this campaign"
+            )
         _walk_arguments(step.arguments, context)
 
 

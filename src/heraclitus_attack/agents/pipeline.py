@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from typing import Any, Mapping
 
@@ -25,6 +25,56 @@ class PipelineResult:
     plan: AttackPlan
     stages: tuple[PipelineStage, ...]
     memory_receipts: tuple[MemoryReceipt, ...] = ()
+
+
+def bind_trusted_oracle_contract(
+    candidate: AttackPlan, seed: AttackPlan | None
+) -> AttackPlan:
+    """Replace all model-controlled verdict inputs with a trusted contract.
+
+    A curated seed supplies the security invariant.  Without a seed the result
+    is deliberately diagnostic-only, so an LLM cannot manufacture either a
+    PASS security claim or a VULNERABLE finding by choosing metadata.
+    """
+
+    digest = hashlib.sha256(candidate.to_json().encode("utf-8")).hexdigest()
+    if seed is not None:
+        oracle_ids = seed.oracle_ids
+        metadata = dict(seed.metadata)
+        source = seed.plan_id
+    else:
+        tools = {step.tool for step in candidate.steps}
+        oracle_ids_list: list[str] = []
+        if tools & {"http_request", "mcp_call", "upstream_counter"}:
+            oracle_ids_list.append("http_status")
+        if "tcp_probe" in tools:
+            oracle_ids_list.append("reachability")
+        oracle_ids = tuple(oracle_ids_list or ["reachability"])
+        metadata = {
+            "expected_statuses": [200, 204, 400, 403, 404, 405, 409, 413, 415, 422, 429],
+            "inconclusive_statuses": [401],
+            "status_tools": sorted(
+                tools & {"http_request", "mcp_call", "upstream_counter"}
+            ),
+            "diagnostic_only": True,
+            "unexpected_status_is_vulnerability": False,
+        }
+        source = "diagnostic-default"
+    metadata.update(
+        {
+            "agent_role": "policy-boundary",
+            "parent_plan_id": candidate.plan_id,
+            "agentic_contract": True,
+            "oracle_contract_source": source,
+            "agent_candidate_sha256": digest,
+        }
+    )
+    return replace(
+        candidate,
+        plan_id=f"policy-{digest[:24]}",
+        oracle_ids=tuple(oracle_ids),
+        metadata=metadata,
+    )
 
 
 class AgentPipeline:
@@ -98,6 +148,7 @@ class AgentPipeline:
     def run(
         self,
         context: AgentContext | Mapping[str, Any] | object,
+        seed: AttackPlan | None = None,
     ) -> PipelineResult:
         ctx = AgentContext.coerce(context)
         stages: list[PipelineStage] = []
@@ -115,7 +166,7 @@ class AgentPipeline:
                 receipts.append(receipt)
             return plan
 
-        recon = add("recon", self._agents["recon"].propose(ctx))
+        recon = add("recon", self._agents["recon"].propose(ctx, seed))
         planned = add(
             "planner",
             self._agents["planner"].propose(ctx.with_plan(recon), recon),
@@ -132,9 +183,12 @@ class AgentPipeline:
             "critic-post-mutation",
             self._agents["critic"].propose(ctx.with_plan(mutated), mutated),
         )
-        final = add(
+        proposed_final = add(
             "minimizer",
             self._agents["minimizer"].propose(ctx.with_plan(checked), checked),
+        )
+        final = add(
+            "policy-boundary", bind_trusted_oracle_contract(proposed_final, seed)
         )
         return PipelineResult(
             plan=final,
@@ -151,4 +205,9 @@ class AgentPipeline:
         return self.run(context).plan
 
 
-__all__ = ["AgentPipeline", "PipelineResult", "PipelineStage"]
+__all__ = [
+    "AgentPipeline",
+    "PipelineResult",
+    "PipelineStage",
+    "bind_trusted_oracle_contract",
+]

@@ -1,4 +1,4 @@
-"""Safe, loopback-only agentic security qualification for HeraclitusDB."""
+"""Isolated agentic security qualification for authorized HeraclitusDB labs."""
 
 from .config import AppConfig, BudgetConfig, RuntimeConfig, SafetyConfig
 from .coordinator import (

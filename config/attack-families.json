@@ -1,0 +1,209 @@
+{
+  "schema": "heraclitus-attack-family-catalog/v1",
+  "purpose": "Authorized testing of disposable HeraclitusDB instances only",
+  "targets_inside_arena": {
+    "rest": "http://127.0.0.1:17475",
+    "grpc": "127.0.0.1:17474",
+    "data": "/arena/data",
+    "legacy_sources": "/opt/legacy"
+  },
+  "promotion_rule": "A model may nominate a candidate, but only an independent typed oracle reproduced on three fresh arenas may declare VULNERABLE.",
+  "families": [
+    {
+      "id": "T01",
+      "name": "Snapshot rollback and forged time travel",
+      "goal": "Restore an older valid snapshot and test whether it can masquerade as the current AS OF state.",
+      "oracles": ["monotonic LSN", "expected Merkle root", "latest-state equivalence"],
+      "legacy_refs": ["src/oracles/replay.py", "src/oracles/merkle.py"]
+    },
+    {
+      "id": "T02",
+      "name": "LSN collision, gap and reuse",
+      "goal": "Exercise duplicate, missing, reordered and reused log sequence numbers across recovery.",
+      "oracles": ["strictly increasing LSN", "append acknowledgement durability", "replay equivalence"],
+      "legacy_refs": ["src/oracles/durability.py"]
+    },
+    {
+      "id": "T03",
+      "name": "Epoch pinning and stale readers",
+      "goal": "Hold old epochs while concurrent writes, compaction and reclamation advance.",
+      "oracles": ["reader monotonicity", "no reclaimed-object exposure", "bounded epoch lifetime"],
+      "legacy_refs": ["runner_v3.py", "src/chaos/ebr_stress.py"]
+    },
+    {
+      "id": "T04",
+      "name": "Merkle and timestamp forgery",
+      "goal": "Alter timestamps, block bytes or manifest roots while preserving superficially valid structure.",
+      "oracles": ["Merkle verification", "immutable timestamp policy", "audit evidence"],
+      "legacy_refs": ["src/oracles/merkle.py", "src/chaos/storage_tamper.py"]
+    },
+    {
+      "id": "D01",
+      "name": "Torn WAL and truncated segment",
+      "goal": "Interrupt or truncate storage at record boundaries and restart from the same data directory.",
+      "oracles": ["acknowledged LSN survives", "no phantom record", "clean recovery classification"],
+      "legacy_refs": ["src/chaos/storage_tamper.py", "src/oracles/durability.py"]
+    },
+    {
+      "id": "D02",
+      "name": "Crash at commit boundaries",
+      "goal": "Vary process termination around append, fsync, index update and acknowledgement boundaries.",
+      "oracles": ["ack-before-fsync detection", "restart equivalence", "idempotent retry"],
+      "legacy_refs": ["src/oracles/durability.py"]
+    },
+    {
+      "id": "D03",
+      "name": "Backup restore with policy or index tampering",
+      "goal": "Restore structurally valid data alongside stale or altered policy and secondary indexes.",
+      "oracles": ["policy digest", "index rebuild equivalence", "tenant ownership"],
+      "legacy_refs": ["src/chaos/storage_tamper.py"]
+    },
+    {
+      "id": "C01",
+      "name": "Raft split brain and joint consensus",
+      "goal": "Inject partitions, delayed messages and conflicting leadership during membership change.",
+      "oracles": ["single committed history", "term monotonicity", "quorum acknowledgement"],
+      "legacy_refs": ["src/chaos/raft_chaos.py"]
+    },
+    {
+      "id": "C02",
+      "name": "Retry storm and phantom commit",
+      "goal": "Force client timeout after server commit and replay the same operation with changed transport state.",
+      "oracles": ["idempotency key uniqueness", "exactly-once visible effect", "audit correlation"],
+      "legacy_refs": ["src/oracles/replay.py"]
+    },
+    {
+      "id": "C03",
+      "name": "Cancellation and partial failure storm",
+      "goal": "Cancel concurrent requests at different phases and verify cleanup, locks and budgets.",
+      "oracles": ["no leaked locks", "bounded workers", "consistent visible state"],
+      "legacy_refs": ["runner_v3.py"]
+    },
+    {
+      "id": "A01",
+      "name": "Authorization TOCTOU and stale cache",
+      "goal": "Revoke permission after planning but before execution and during cached authorization windows.",
+      "oracles": ["authorization checked at effect time", "revocation freshness", "zero denied effect"],
+      "legacy_refs": ["runner.py", "docs/AUDIT-RECURSIVE.md"]
+    },
+    {
+      "id": "A02",
+      "name": "Confused deputy and capability laundering",
+      "goal": "Make a privileged agent perform an operation for a principal lacking the same capability.",
+      "oracles": ["principal binding", "capability provenance", "zero cross-principal effect"],
+      "legacy_refs": ["docs/SPECS/SPEC-002.md"]
+    },
+    {
+      "id": "A03",
+      "name": "Tenant, agent and namespace isolation",
+      "goal": "Cross identifiers, cursors, snapshots and caches between synthetic tenants and agents.",
+      "oracles": ["owner identity", "result-set noninterference", "audit principal"],
+      "legacy_refs": ["docs/SPECS/SPEC-002.md"]
+    },
+    {
+      "id": "A04",
+      "name": "Credential scope and protocol downgrade",
+      "goal": "Replay credentials on adjacent ports, protocols or downgraded authentication modes.",
+      "oracles": ["origin binding", "audience binding", "downgrade refusal"],
+      "legacy_refs": ["docs/AUDIT-RECURSIVE.md"]
+    },
+    {
+      "id": "L01",
+      "name": "Persistent memory and RAG poisoning",
+      "goal": "Store inert-looking data that attempts to control agents when retrieved later.",
+      "oracles": ["content remains data", "tool set unchanged", "instruction provenance"],
+      "legacy_refs": ["docs/SPECS/SPEC-002.md"]
+    },
+    {
+      "id": "L02",
+      "name": "Multi-agent trust forgery",
+      "goal": "Forge role, handoff, approval or critic output to influence another agent.",
+      "oracles": ["signed role identity", "approval provenance", "independent policy decision"],
+      "legacy_refs": ["docs/SPECS/SPEC-002.md"]
+    },
+    {
+      "id": "L03",
+      "name": "Tool relabeling and method ambiguity",
+      "goal": "Disagree about tool name or method between headers, body, batch members and audit record.",
+      "oracles": ["single canonical interpretation", "fail closed", "zero upstream effect"],
+      "legacy_refs": ["docs/AUDIT-RECURSIVE.md", "runner.py"]
+    },
+    {
+      "id": "P01",
+      "name": "JSON and JSON-RPC parser differential",
+      "goal": "Vary duplicate keys, numbers, Unicode, nesting, batches and trailing bytes across parsers.",
+      "oracles": ["same parse decision", "no partial batch effect", "bounded parser"],
+      "legacy_refs": ["parser_differential.py", "runner_v3.py"]
+    },
+    {
+      "id": "P02",
+      "name": "HTTP and gRPC metadata smuggling",
+      "goal": "Exercise conflicting length, transfer, method, pseudo-header and metadata representations.",
+      "oracles": ["single message boundary", "forbidden metadata stripped", "audit matches execution"],
+      "legacy_refs": ["docs/AUDIT-RECURSIVE.md"]
+    },
+    {
+      "id": "P03",
+      "name": "Unicode confusable and normalization bypass",
+      "goal": "Replace policy, tool and identity tokens with confusables and mixed normalization forms.",
+      "oracles": ["canonical identifier", "deny ambiguity", "same audit spelling"],
+      "legacy_refs": ["runner.py", "runner_v3.py"]
+    },
+    {
+      "id": "P04",
+      "name": "Traversal, SSRF and redirect chains",
+      "goal": "Compose encoded traversal, nested destinations, synthetic callbacks and redirect behavior.",
+      "oracles": ["namespace confinement", "exact destination allowlist", "zero synthetic callback hits"],
+      "legacy_refs": ["runner.py"]
+    },
+    {
+      "id": "R01",
+      "name": "Depth, compression and cardinality bombs",
+      "goal": "Generate bounded variants with deep nesting, high fanout, compression expansion and costly Unicode.",
+      "oracles": ["resource budget", "early rejection", "service remains healthy"],
+      "legacy_refs": ["docs/SPECS/SPEC-002.md", "runner_v3.py"]
+    },
+    {
+      "id": "R02",
+      "name": "Slowloris, idle stream and descriptor pressure",
+      "goal": "Hold partial requests and idle streams while measuring bounded connection cleanup.",
+      "oracles": ["idle timeout", "descriptor recovery", "healthy control request"],
+      "legacy_refs": ["runner.py", "runner_v3.py"]
+    },
+    {
+      "id": "R03",
+      "name": "Hume AST and algorithmic complexity",
+      "goal": "Generate valid but adversarial expressions, plans and graph shapes with nonlinear cost.",
+      "oracles": ["instruction budget", "compile timeout", "memory ceiling"],
+      "legacy_refs": ["src/chaos/hume_destructor.py"]
+    },
+    {
+      "id": "S01",
+      "name": "Overbroad semantic mutation",
+      "goal": "Submit an operation that should affect one entity and verify every changed entity and index.",
+      "oracles": ["exact write set", "index equivalence", "tenant boundary"],
+      "legacy_refs": ["src/oracles/replay.py"]
+    },
+    {
+      "id": "S02",
+      "name": "Audit disappearance and evidence tampering",
+      "goal": "Cause an effect while suppressing, reordering or mislabeling its security evidence.",
+      "oracles": ["effect-to-audit bijection", "append-only order", "principal and policy match"],
+      "legacy_refs": ["docs/AUDIT-RECURSIVE.md"]
+    },
+    {
+      "id": "S03",
+      "name": "Timing and response side channels",
+      "goal": "Compare denied and absent resources, identities and tenants under repeated controlled samples.",
+      "oracles": ["distribution threshold", "response-shape equivalence", "no secret metadata"],
+      "legacy_refs": ["docs/SPECS/SPEC-002.md"]
+    },
+    {
+      "id": "S04",
+      "name": "Response success with wrong state",
+      "goal": "Treat 2xx as transport evidence only and compare actual state, indexes, LSN and audit effects.",
+      "oracles": ["declared postcondition", "exact side-effect count", "replay equivalence"],
+      "legacy_refs": ["src/oracles/upstream.py", "src/oracles/replay.py"]
+    }
+  ]
+}

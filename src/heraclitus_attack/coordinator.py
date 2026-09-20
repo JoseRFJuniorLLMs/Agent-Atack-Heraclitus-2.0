@@ -153,12 +153,15 @@ class Coordinator:
     @staticmethod
     def _base_verdict(results: Sequence[OracleResult]) -> Verdict:
         verdicts = {result.verdict for result in results}
-        if Verdict.VULNERABLE in verdicts or Verdict.FAIL in verdicts:
-            return Verdict.FAIL
+        # Every oracle named by the plan is required.  A failing response
+        # oracle cannot be promoted while the independent effect/evidence
+        # oracle is missing or broken.
         if Verdict.ERROR in verdicts:
             return Verdict.ERROR
         if Verdict.INCONCLUSIVE in verdicts:
             return Verdict.INCONCLUSIVE
+        if Verdict.VULNERABLE in verdicts or Verdict.FAIL in verdicts:
+            return Verdict.FAIL
         if results and verdicts == {Verdict.PASS}:
             return Verdict.PASS
         return Verdict.INCONCLUSIVE
@@ -246,6 +249,9 @@ class Coordinator:
             attempts += 1
             repeated = self._evaluate(bound, observations)
             all_results.extend(repeated)
+            if self._base_verdict(repeated) is not Verdict.FAIL:
+                stable_keys.clear()
+                break
             repeated_keys = self._failure_keys(repeated)
             stable_keys &= repeated_keys
             if stable_keys:

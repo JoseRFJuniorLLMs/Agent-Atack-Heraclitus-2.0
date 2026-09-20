@@ -97,11 +97,20 @@ class BootConsole:
         print(f"{left} {name}{suffix}", file=self.stream, flush=True)
         self._json_event("status", status=normalized, name=name, detail=detail)
 
-    def attack(self, name: str, verdict: Any, detail: str = "") -> None:
+    def attack(
+        self,
+        name: str,
+        verdict: Any,
+        detail: str = "",
+        *,
+        diagnostic: bool = False,
+    ) -> None:
         """Mostra o significado operacional; nunca chama erro do harness de falha do DB."""
 
         normalized = self._status(verdict)
-        if normalized == "PASS":
+        if diagnostic and normalized == "PASS":
+            message = "diagnóstico concluído; a propriedade declarada foi observada"
+        elif normalized == "PASS":
             message = "ataque NÃO funcionou; a proteção foi comprovada pelo oráculo"
         elif normalized == "VULNERABLE":
             message = "ATAQUE FUNCIONOU — O BANCO TEM UMA VULNERABILIDADE REPRODUZÍVEL"
@@ -120,7 +129,15 @@ class BootConsole:
 
     def summary(self, counts: dict[str, int], exit_code: int) -> None:
         ordered = " · ".join(f"{key}={value}" for key, value in sorted(counts.items()))
-        status = "PASS" if exit_code == 0 else "VULNERABLE" if counts.get("VULNERABLE") else "ERROR"
+        if counts.get("VULNERABLE"):
+            status = "VULNERABLE"
+        elif counts.get("ERROR") or exit_code >= 4:
+            status = "ERROR"
+        elif counts.get("FAIL"):
+            status = "FAIL"
+        elif counts.get("INCONCLUSIVE") or exit_code:
+            status = "INCONCLUSIVE"
+        else:
+            status = "PASS"
         self.line(status, "campanha concluída", f"{ordered}; exit={exit_code}")
         self._json_event("summary", counts=counts, exit_code=exit_code)
-

@@ -3,17 +3,37 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import ipaddress
 import json
 from threading import Lock
 from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
+import unicodedata
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from .safety import is_loopback_host
+
 
 _EVENT_PATH = "/api/v1/agent/red-team/events"
 _MAX_RESPONSE_BYTES = 1_048_576
+_PROMPT_MEMORY_FIELDS = frozenset(
+    {
+        "attack_id",
+        "campaign_id",
+        "vector",
+        "target",
+        "phase",
+        "result",
+        "expected",
+        "reason_code",
+        "blocked",
+        "upstream_delta",
+        "transport_status",
+        "sequence",
+        "lsn",
+        "timestamp",
+    }
+)
 
 
 class MemoryError(RuntimeError):
@@ -27,7 +47,9 @@ class _NoRedirects(HTTPRedirectHandler):
 
 def _bounded_text(value: Any, maximum: int, *, field_name: str) -> str:
     text = str(value)
-    if not text or len(text) > maximum:
+    if not text or len(text) > maximum or any(
+        unicodedata.category(char) == "Cc" for char in text
+    ):
         raise ValueError(f"{field_name} must contain 1..{maximum} characters")
     return text
 
@@ -38,12 +60,7 @@ def _loopback_origin(value: str) -> str:
         raise ValueError("HeraclitusDB URL must be http(s)")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("HeraclitusDB URL cannot contain credentials/query/fragment")
-    hostname = parsed.hostname
-    try:
-        is_loopback = ipaddress.ip_address(hostname).is_loopback
-    except ValueError:
-        is_loopback = hostname.lower() == "localhost"
-    if not is_loopback:
+    if not is_loopback_host(parsed.hostname):
         raise ValueError("HeraclitusDB memory is loopback-only")
     return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
@@ -85,6 +102,16 @@ def _sanitize_untrusted(
             )
         return clean
     return str(value)[:max_string]
+
+
+def _memory_prompt_projection(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep typed outcome metadata; drop arbitrary DB text before any prompt."""
+
+    projected = {
+        key: item for key, item in value.items() if key in _PROMPT_MEMORY_FIELDS
+    }
+    clean = _sanitize_untrusted(projected)
+    return clean if isinstance(clean, dict) else {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,7 +273,7 @@ class HeraclitusMemorySink:
     def __init__(
         self,
         *,
-        base_url: str = "http://127.0.0.1:18080",
+        base_url: str = "http://127.0.0.1:8080",
         bearer_token: str | None = None,
         timeout_seconds: float = 5.0,
         max_response_bytes: int = _MAX_RESPONSE_BYTES,
@@ -331,7 +358,7 @@ class HeraclitusMemorySink:
         if not isinstance(events, list):
             raise MemoryError("HeraclitusDB query response has invalid events")
         return tuple(
-            UntrustedMemoryRecord(_sanitize_untrusted(event))
+            UntrustedMemoryRecord(_memory_prompt_projection(event))
             for event in events[:limit]
             if isinstance(event, dict)
         )

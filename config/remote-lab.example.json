@@ -1,0 +1,59 @@
+{
+  "runtime": {
+    "budgets": {
+      "max_plans": 16,
+      "max_steps_per_plan": 16,
+      "max_requests_per_plan": 96,
+      "max_concurrency": 4,
+      "max_payload_bytes": 131072,
+      "max_response_bytes": 262144,
+      "step_timeout_seconds": 10.0,
+      "plan_timeout_seconds": 180.0,
+      "campaign_timeout_seconds": 1200.0,
+      "confirmation_runs": 3
+    },
+    "safety": {
+      "allowed_tools": ["http_request", "mcp_call", "tcp_probe", "upstream_counter"],
+      "allowed_http_methods": ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"],
+      "allowed_targets": [
+        "http://192.168.56.20:7475",
+        "192.168.56.20:7474",
+        "http://192.168.56.20:8080",
+        "http://192.168.56.20:8787",
+        "http://192.168.56.20:4318",
+        "http://192.168.56.20:19000"
+      ],
+      "allow_https": true,
+      "destructive_token_env": "HERACLITUS_ATTACK_DESTRUCTIVE_TOKEN",
+      "require_snapshot_for_destructive": true,
+      "allow_remote_targets": true,
+      "allowed_remote_hosts": ["192.168.56.20"],
+      "remote_lab_token_env": "HERACLITUS_REMOTE_LAB_TOKEN"
+    },
+    "user_agent": "Agent-Atack-Heraclitus/2.0-remote-lab"
+  },
+  "targets": {
+    "core_rest": "http://192.168.56.20:7475",
+    "core_grpc": "192.168.56.20:7474",
+    "agent_api": "http://192.168.56.20:8080",
+    "mcp_gateway": "http://192.168.56.20:8787",
+    "otlp": "http://192.168.56.20:4318",
+    "upstream": "http://192.168.56.20:19000"
+  },
+  "provider": {
+    "kind": "mock",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "model": "replace-with-your-live-model",
+    "api_key_env": "HERACLITUS_LLM_API_KEY",
+    "timeout_seconds": 60.0
+  },
+  "campaign": {
+    "profile": "remote-lab",
+    "interval_seconds": 3600.0,
+    "plans_per_cycle": 6,
+    "max_cycles": 1,
+    "agentic": true,
+    "persist_evidence": false,
+    "report_dir": "reports/remote-lab"
+  }
+}

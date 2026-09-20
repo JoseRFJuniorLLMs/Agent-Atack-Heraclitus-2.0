@@ -17,8 +17,12 @@ KillSignal=SIGINT
 
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONIOENCODING=utf-8
-Environment=NO_COLOR=1
-Environment=HERACLITUS_LOG_FORMAT=journal
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=FORCE_COLOR=1
+Environment=SYSTEMD_COLORS=1
+Environment=TERM=xterm-256color
+Environment=HERACLITUS_LOG_FORMAT=fedora
+EnvironmentFile=-%h/.config/heraclitus-attack/agent.env
 
 StandardOutput=journal
 StandardError=journal
@@ -30,6 +34,7 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=read-only
+ReadWritePaths=/mnt/d/DEV/Agent-Atack-Heraclitus-2.0/reports
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true
@@ -48,4 +53,3 @@ UMask=0077
 
 [Install]
 WantedBy=default.target
-

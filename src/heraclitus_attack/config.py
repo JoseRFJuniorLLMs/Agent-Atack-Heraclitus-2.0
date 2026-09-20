@@ -61,12 +61,20 @@ class SafetyConfig:
     allow_https: bool = True
     destructive_token_env: str = "HERACLITUS_ATTACK_DESTRUCTIVE_TOKEN"
     require_snapshot_for_destructive: bool = True
+    allow_remote_targets: bool = False
+    allowed_remote_hosts: frozenset[str] = frozenset()
+    remote_lab_token_env: str = "HERACLITUS_REMOTE_LAB_TOKEN"
 
     def __post_init__(self) -> None:
         if not self.allowed_tools:
             raise ValueError("allowed_tools cannot be empty")
         if any(not name or not name.replace("_", "").isalnum() for name in self.allowed_tools):
             raise ValueError("allowed_tools contains an invalid adapter name")
+        if self.allowed_remote_hosts and not self.allow_remote_targets:
+            raise ValueError("allowed_remote_hosts requires allow_remote_targets=true")
+        for name in (self.destructive_token_env, self.remote_lab_token_env):
+            if not name or not name.replace("_", "").isalnum():
+                raise ValueError("token environment variable name is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +98,10 @@ class RuntimeConfig:
             )
         if "allowed_targets" in raw_safety:
             raw_safety["allowed_targets"] = frozenset(raw_safety["allowed_targets"])
+        if "allowed_remote_hosts" in raw_safety:
+            raw_safety["allowed_remote_hosts"] = frozenset(
+                str(host).strip().strip("[]") for host in raw_safety["allowed_remote_hosts"]
+            )
         return cls(
             budgets=BudgetConfig(**raw_budgets),
             safety=SafetyConfig(**raw_safety),
@@ -113,6 +125,12 @@ class RuntimeConfig:
         """Read the operator secret at use time; never serialise it into plans."""
 
         token = os.environ.get(self.safety.destructive_token_env, "").strip()
+        return token or None
+
+    def expected_remote_lab_token(self) -> str | None:
+        """Presence is the operator's ephemeral authorization for remote-lab I/O."""
+
+        token = os.environ.get(self.safety.remote_lab_token_env, "").strip()
         return token or None
 
 

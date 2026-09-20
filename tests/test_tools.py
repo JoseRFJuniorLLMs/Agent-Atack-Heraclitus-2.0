@@ -101,6 +101,50 @@ def test_http_tool_bounds_response_and_sets_headers(monkeypatch):
     assert connection.closed
 
 
+def test_http_tool_accepts_control_plane_authorization_on_separate_trusted_path(
+    monkeypatch,
+):
+    from heraclitus_attack import tools
+
+    FakeConnection.instances.clear()
+    FakeConnection.fail = None
+    FakeConnection.response = FakeResponse()
+    monkeypatch.setattr(tools.http.client, "HTTPConnection", FakeConnection)
+    original = step(path="/private")
+
+    observed = HttpRequestTool().execute_with_trusted_headers(
+        original,
+        timeout_seconds=2,
+        max_response_bytes=50,
+        user_agent="tester",
+        trusted_headers={"Authorization": "Bearer control-plane-secret"},
+    )
+
+    assert observed.ok
+    headers = FakeConnection.instances[-1].request_args[3]
+    assert headers["Authorization"] == "Bearer control-plane-secret"
+    assert "headers" not in original.arguments
+
+
+def test_trusted_header_path_rejects_noncredential_and_newline_values(monkeypatch):
+    from heraclitus_attack import tools
+
+    monkeypatch.setattr(tools.http.client, "HTTPConnection", FakeConnection)
+    for headers in (
+        {"X-Untrusted": "value"},
+        {"Authorization": "Bearer good\r\nX-Evil: yes"},
+    ):
+        observed = HttpRequestTool().execute_with_trusted_headers(
+            step(),
+            timeout_seconds=1,
+            max_response_bytes=50,
+            user_agent="tester",
+            trusted_headers=headers,
+        )
+        assert not observed.ok
+        assert observed.error == "ValueError during loopback tool execution"
+
+
 def test_http_tool_reports_sanitised_error_and_closes(monkeypatch):
     from heraclitus_attack import tools
 
@@ -122,9 +166,10 @@ def test_mcp_tool_builds_json_rpc_post(monkeypatch):
 
     def fake_execute(self, delegated, **kwargs):
         captured["step"] = delegated
+        captured["trusted_headers"] = kwargs["trusted_headers"]
         return "observed"
 
-    monkeypatch.setattr(HttpRequestTool, "execute", fake_execute)
+    monkeypatch.setattr(HttpRequestTool, "execute_with_trusted_headers", fake_execute)
     result = McpCallTool().execute(
         step(tool="mcp_call", message={"jsonrpc": "2.0"}),
         timeout_seconds=1,
@@ -136,6 +181,7 @@ def test_mcp_tool_builds_json_rpc_post(monkeypatch):
     assert delegated.arguments["method"] == "POST"
     assert delegated.arguments["path"] == "/mcp"
     assert delegated.arguments["body"] == {"jsonrpc": "2.0"}
+    assert captured["trusted_headers"] == {}
 
 
 class DummySocket:
@@ -212,4 +258,3 @@ def test_default_registry_has_only_fixed_adapters():
     assert set(registry) == {"http_request", "mcp_call", "tcp_probe", "upstream_counter"}
     assert "shell" not in registry
     assert "subprocess" not in registry
-

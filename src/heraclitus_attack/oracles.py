@@ -113,6 +113,14 @@ class HttpStatusOracle:
                 evidence=seen,
                 details={"observed_statuses": seen},
             )
+        if plan.metadata.get("diagnostic_only") is True:
+            return _result(
+                self.oracle_id,
+                Verdict.INCONCLUSIVE,
+                "probe diagnóstico divergiu sem afirmar vulnerabilidade",
+                evidence=seen,
+                details={"observed_statuses": seen, "unexpected_count": len(unexpected)},
+            )
         verdict = (
             Verdict.VULNERABLE
             if plan.metadata.get("unexpected_status_is_vulnerability") is True

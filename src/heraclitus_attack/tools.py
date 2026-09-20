@@ -1,4 +1,4 @@
-"""Small, fixed set of loopback-only I/O adapters.
+"""Small, fixed set of allowlisted I/O adapters.
 
 There is intentionally no generic command, import, Python, filesystem, or
 subprocess adapter.  Tool names in an LLM-produced plan select only one of the
@@ -76,11 +76,50 @@ def _headers(value: object, user_agent: str) -> dict[str, str]:
     return output
 
 
+def _merge_trusted_headers(
+    output: dict[str, str], trusted: Mapping[str, str]
+) -> dict[str, str]:
+    """Merge control-plane credentials after untrusted headers were rejected.
+
+    This function is deliberately not reachable through ``AttackStep.arguments``.
+    Only the credential adapter calls the trusted execution entry point.
+    """
+
+    allowed = {"authorization", "x-api-key"}
+    for raw_name, raw_value in trusted.items():
+        name, item = str(raw_name), str(raw_value)
+        if name.lower() not in allowed:
+            raise ValueError(f"unsupported trusted header: {name!r}")
+        if not name or len(name) > 128 or len(item) > 8192:
+            raise ValueError("trusted HTTP header exceeds limit")
+        if "\r" in name or "\n" in name or "\r" in item or "\n" in item:
+            raise ValueError("newline in trusted HTTP header")
+        output[name] = item
+    return output
+
+
 @dataclass(frozen=True, slots=True)
 class HttpRequestTool:
     """Bounded HTTP client with redirects deliberately unsupported."""
 
     default_method: str = "GET"
+
+    def execute_with_trusted_headers(
+        self,
+        step: AttackStep,
+        *,
+        timeout_seconds: float,
+        max_response_bytes: int,
+        user_agent: str,
+        trusted_headers: Mapping[str, str],
+    ) -> Observation:
+        return self._execute(
+            step,
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+            user_agent=user_agent,
+            trusted_headers=trusted_headers,
+        )
 
     def execute(
         self,
@@ -89,6 +128,23 @@ class HttpRequestTool:
         timeout_seconds: float,
         max_response_bytes: int,
         user_agent: str,
+    ) -> Observation:
+        return self._execute(
+            step,
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+            user_agent=user_agent,
+            trusted_headers={},
+        )
+
+    def _execute(
+        self,
+        step: AttackStep,
+        *,
+        timeout_seconds: float,
+        max_response_bytes: int,
+        user_agent: str,
+        trusted_headers: Mapping[str, str],
     ) -> Observation:
         started_at = utc_now()
         started = time.monotonic()
@@ -102,6 +158,7 @@ class HttpRequestTool:
                 path = f"{path}?{parsed.query}"
             body = _body_bytes(step.arguments.get("body"))
             headers = _headers(step.arguments.get("headers"), user_agent)
+            _merge_trusted_headers(headers, trusted_headers)
             if body is not None:
                 headers.setdefault("Content-Type", "application/json")
                 headers["Content-Length"] = str(len(body))
@@ -165,6 +222,23 @@ class HttpRequestTool:
 class McpCallTool:
     """Send a JSON-RPC message to the target gateway; execute nothing locally."""
 
+    def execute_with_trusted_headers(
+        self,
+        step: AttackStep,
+        *,
+        timeout_seconds: float,
+        max_response_bytes: int,
+        user_agent: str,
+        trusted_headers: Mapping[str, str],
+    ) -> Observation:
+        return self._execute(
+            step,
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+            user_agent=user_agent,
+            trusted_headers=trusted_headers,
+        )
+
     def execute(
         self,
         step: AttackStep,
@@ -172,6 +246,23 @@ class McpCallTool:
         timeout_seconds: float,
         max_response_bytes: int,
         user_agent: str,
+    ) -> Observation:
+        return self._execute(
+            step,
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+            user_agent=user_agent,
+            trusted_headers={},
+        )
+
+    def _execute(
+        self,
+        step: AttackStep,
+        *,
+        timeout_seconds: float,
+        max_response_bytes: int,
+        user_agent: str,
+        trusted_headers: Mapping[str, str],
     ) -> Observation:
         arguments = dict(step.arguments)
         arguments.setdefault("method", "POST")
@@ -191,11 +282,12 @@ class McpCallTool:
             destructive=step.destructive,
             tags=step.tags,
         )
-        return HttpRequestTool(default_method="POST").execute(
+        return HttpRequestTool(default_method="POST").execute_with_trusted_headers(
             delegated,
             timeout_seconds=timeout_seconds,
             max_response_bytes=max_response_bytes,
             user_agent=user_agent,
+            trusted_headers=trusted_headers,
         )
 
 

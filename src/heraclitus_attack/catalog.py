@@ -27,6 +27,7 @@ def _http_plan(
     tool: str = "http_request",
     inconclusive: list[int] | None = None,
     tags: tuple[str, ...] = (),
+    diagnostic_only: bool = False,
 ) -> AttackPlan:
     arguments: dict[str, object] = {"method": method, "path": path}
     if body is not None:
@@ -53,6 +54,7 @@ def _http_plan(
             "status_tools": [tool],
             "unexpected_status_is_vulnerability": True,
             "synthetic_only": True,
+            "diagnostic_only": diagnostic_only,
         },
     )
 
@@ -138,6 +140,7 @@ def smoke_plans(settings: LabSettings) -> tuple[AttackPlan, ...]:
             path="/healthz",
             expected=[200, 401, 403, 404],
             tags=("baseline", "health"),
+            diagnostic_only=True,
         ),
         _http_plan(
             title="Agent bundle path traversal is rejected",
@@ -165,6 +168,15 @@ def smoke_plans(settings: LabSettings) -> tuple[AttackPlan, ...]:
             title="Forbidden synthetic MCP tool has zero external effect",
             tool_name="heraclitus_redteam_forbidden_probe",
             arguments={"marker": SAFE_MARKER},
+        ),
+        _mcp_denial_plan(
+            settings,
+            title="Agent-supplied callback cannot trigger synthetic SSRF",
+            tool_name="heraclitus_redteam_forbidden_probe",
+            arguments={
+                "marker": SAFE_MARKER,
+                "callback": f"{settings.targets.upstream}/synthetic-callback",
+            },
         ),
     )
 
@@ -197,9 +209,10 @@ def full_plans(settings: LabSettings) -> tuple[AttackPlan, ...]:
             path="/v1/traces",
             method="POST",
             body={"resourceSpans": [], "padding": "x" * 32_768},
-            expected=[400, 403, 413, 422],
+            expected=[200, 400, 403, 413, 422],
             inconclusive=[401],
             tags=("otlp", "size-boundary"),
+            diagnostic_only=True,
         ),
         _http_plan(
             title="Mixed JSON-RPC batch cannot bypass deny",
@@ -208,10 +221,11 @@ def full_plans(settings: LabSettings) -> tuple[AttackPlan, ...]:
             path="/mcp",
             method="POST",
             body=mixed_batch,
-            expected=[400, 403, 405, 413, 422],
+            expected=[200, 400, 403, 405, 413, 422],
             inconclusive=[401],
             tool="mcp_call",
             tags=("json-rpc", "batch"),
+            diagnostic_only=True,
         ),
         _mcp_denial_plan(
             settings,

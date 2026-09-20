@@ -1,7 +1,7 @@
 {
   "runtime": {
     "budgets": {
-      "max_plans": 4,
+      "max_plans": 10,
       "max_steps_per_plan": 8,
       "max_requests_per_plan": 24,
       "max_concurrency": 2,
