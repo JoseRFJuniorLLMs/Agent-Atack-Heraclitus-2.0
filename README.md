@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.jpg" alt="Agent Atack" width="220" />
+  <img src="assets/logo.jpg" alt="Agent Atack" width="800" />
 </p>
 # Agent-Atack-Heraclitus 2.0
 
