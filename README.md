@@ -1,3 +1,6 @@
+<p align="center">
+  <img src="img/logo.jpg" alt="Agent Atack" width="220" />
+</p>
 # Agent-Atack-Heraclitus 2.0
 
 Laboratório de *red team* defensivo e agêntico para o HeraclitusDB de
